@@ -1,10 +1,10 @@
 {
-  "id": "icloud-contacts-sync",
-  "name": "iCloud Contacts Sync",
-  "version": "1.0.3",
-  "minAppVersion": "0.15.0",
-  "description": "Generate notes automatically from your iCloud contacts.",
-  "author": "Schmavery",
-  "authorUrl": "https://obsidian.md",
-  "isDesktopOnly": false
+	"id": "icloud-contacts-sync",
+	"name": "iCloud Contacts Sync",
+	"version": "1.0.4",
+	"minAppVersion": "0.15.0",
+	"description": "Generate notes automatically from your iCloud contacts.",
+	"author": "Schmavery",
+	"authorUrl": "https://obsidian.md",
+	"isDesktopOnly": false
 }
