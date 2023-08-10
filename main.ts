@@ -281,7 +281,9 @@ export default class ContactsSyncPlugin extends Plugin {
     }
 
     if (
+      !this.settings.icloudPassword ||
       this.settings.icloudPassword.length == 0 ||
+      !this.settings.icloudUserName ||
       this.settings.icloudUserName.length == 0
     ) {
       new Notice(`Error: Make sure you have entered valid iCloud credentials`);
