@@ -171,7 +171,7 @@ export default class ContactsSyncPlugin extends Plugin {
       await this.app.vault.create(path, `---\n${lines.join("\n")}\n---\n\n`);
     } else {
       this.app.fileManager.processFrontMatter(file, (md) => {
-        if (md.SyncID != details.uid) {
+        if (md.SyncID && md.SyncID != details.uid) {
           mismatch = true;
           return md;
         }
