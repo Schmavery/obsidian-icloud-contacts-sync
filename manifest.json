@@ -1,7 +1,7 @@
 {
 	"id": "icloud-contacts-sync",
 	"name": "iCloud Contacts Sync",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "0.15.0",
 	"description": "This is a plugin that syncs your contacts from iCloud.",
 	"author": "Obsidian",
