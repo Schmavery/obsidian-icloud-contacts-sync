@@ -17,11 +17,13 @@ interface ContactsSyncPluginSettings {
   icloudPassword: string;
   peoplePath: string;
   includeContactsWithoutNames: boolean;
+  includeContactInfoTagging: boolean;
 }
 
 const DEFAULT_SETTINGS: Partial<ContactsSyncPluginSettings> = {
   peoplePath: "people",
   includeContactsWithoutNames: false,
+  includeContactInfoTagging: false,
 };
 
 async function getPrincipal(authHeaders: { Authorization: string }) {
@@ -71,7 +73,6 @@ async function getContacts(
   addressBook: string,
   authHeaders: { Authorization: string }
 ) {
-  console.log(addressBook);
   const res = await request({
     url: addressBook,
     method: "REPORT",
@@ -151,7 +152,9 @@ export default class ContactsSyncPlugin extends Plugin {
     const lines = [
       details.name && `Name: ${details.name}`,
       details.org && `Organization: ${details.org}`,
-      details.address && `Address: ${formatYAMLArray(details.address)}`,
+      details.address &&
+        details.address.length &&
+        `Address: ${formatYAMLArray(details.address)}`,
       details.birthday && `Birthday: ${details.birthday}`,
       details.emails &&
         details.emails.length &&
@@ -203,7 +206,7 @@ export default class ContactsSyncPlugin extends Plugin {
       const propType = arrayify(jCardProp[1].type).filter(
         (v) => !["voice", "pref"].includes(v)
       );
-      return propType.length
+      return propType.length && this.settings.includeContactInfoTagging
         ? `${formatPhoneNumber(jCardProp[3].toString())} (${propType[0]})`
         : formatPhoneNumber(jCardProp[3].toString());
     });
@@ -213,7 +216,7 @@ export default class ContactsSyncPlugin extends Plugin {
       const propType = arrayify(jCardProp[1].type).filter(
         (v) => !["internet", "pref"].includes(v)
       );
-      return propType.length
+      return propType.length && this.settings.includeContactInfoTagging
         ? `${jCardProp[3].toString()} (${propType[0]})`
         : jCardProp[3].toString();
     });
@@ -266,6 +269,25 @@ export default class ContactsSyncPlugin extends Plugin {
   }
 
   async doSync() {
+    const folderpath = normalizePath(this.settings.peoplePath);
+    const folder = this.app.vault.getAbstractFileByPath(folderpath);
+    if (folder instanceof TFile) {
+      new Notice(`Error: "People path" option must be a folder.`);
+      return;
+    }
+    if (!folder) {
+      await this.app.vault.createFolder(folderpath);
+      new Notice(`Created iCloud contacts folder "${folderpath}"`);
+    }
+
+    if (
+      this.settings.icloudPassword.length == 0 ||
+      this.settings.icloudUserName.length == 0
+    ) {
+      new Notice(`Error: Make sure you have entered valid iCloud credentials`);
+      return;
+    }
+
     new Notice("Starting iCloud contacts sync");
 
     const authHeaders = {
@@ -276,30 +298,32 @@ export default class ContactsSyncPlugin extends Plugin {
         ),
     };
 
-    const principal = await getPrincipal(authHeaders);
-    const addressBookHome = await getAddressBook(principal, authHeaders);
-    const contacts = await getContacts(`${addressBookHome}card/`, authHeaders);
-    const filteredContacts = this.settings.includeContactsWithoutNames
-      ? contacts
-      : contacts.filter(hasName);
-    filteredContacts.forEach((c) => this.updateContact(c));
+    try {
+      const principal = await getPrincipal(authHeaders);
+      const addressBookHome = await getAddressBook(principal, authHeaders);
+      const contacts = await getContacts(
+        `${addressBookHome}card/`,
+        authHeaders
+      );
+      const filteredContacts = this.settings.includeContactsWithoutNames
+        ? contacts
+        : contacts.filter(hasName);
+      filteredContacts.forEach((c) => this.updateContact(c));
+      new Notice("Completed iCloud contacts sync");
+    } catch (e) {
+      new Notice(`Error: Sync failed, check your iCloud credentials`);
+    }
   }
 
   async onload() {
     await this.loadSettings();
 
     // This creates an icon in the left ribbon.
-    const ribbonIconEl = this.addRibbonIcon(
-      "contact",
-      "Sync iCloud Contacts",
-      (evt: MouseEvent) => {
-        this.doSync();
-      }
-    );
-    // Perform additional things with the ribbon
-    ribbonIconEl.addClass("my-plugin-ribbon-class");
+    this.addRibbonIcon("contact", "Sync iCloud Contacts", (evt: MouseEvent) => {
+      this.doSync();
+    });
 
-    // This adds a simple command that can be triggered anywhere
+    // This adds a command to trigger a sync
     this.addCommand({
       id: "sync-icloud-contacts",
       name: "Sync All Contacts",
@@ -380,6 +404,20 @@ class ContactsSyncSettingsTab extends PluginSettingTab {
           .setValue(this.plugin.settings.includeContactsWithoutNames)
           .onChange(async (value) => {
             this.plugin.settings.includeContactsWithoutNames = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Include contact info tagging")
+      .setDesc(
+        "Eg. Add (home) or (work) to email and phone numbers when available"
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.includeContactInfoTagging)
+          .onChange(async (value) => {
+            this.plugin.settings.includeContactInfoTagging = value;
             await this.plugin.saveSettings();
           });
       });
