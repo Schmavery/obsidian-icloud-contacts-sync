@@ -1,6 +1,6 @@
 {
   "name": "obsidian-icloud-contacts-sync",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "This is a plugin that syncs your contacts to Obsidian from iCloud.",
   "main": "main.js",
   "scripts": {
