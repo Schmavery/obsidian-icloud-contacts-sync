@@ -32,7 +32,7 @@ At this time, the plugin is only installable via [BRAT](https://tfthacker.com/BR
 
 ## Usage
 
-- Go to plugin settings and enter your iCloud username and password. Use the instruction [here]() to generate an app-specific password!
+- Go to plugin settings and enter your iCloud username and password. **Use the instructions [here](https://support.apple.com/en-us/HT204397) to generate an app-specific password!**
 - Optionally, customize the "People path", to put your contact notes in a different folder.
 - Optionally, enable syncing of contacts without names. This is usually companies/organizations.
 
@@ -42,6 +42,7 @@ Then use the button in the sidebar or the `iCloud Contacts Sync: Sync All Contac
 
 - Support syncing back to iCloud
 - Support incremental sync using ctag/etag. Right now every sync is a full sync.
+- Submit to Obsidian plugin library
 
 ## Development
 
