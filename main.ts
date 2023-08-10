@@ -253,7 +253,6 @@ export default class ContactsSyncPlugin extends Plugin {
       this.doContactFileUpdate(undefined, disambiguatedFilepath, details);
     } else if (!file || file instanceof TFile) {
       if (details.name?.startsWith("Peter")) {
-        console.log(details);
       }
       const { mismatch } = await this.doContactFileUpdate(
         file ?? undefined,
@@ -261,7 +260,6 @@ export default class ContactsSyncPlugin extends Plugin {
         details
       );
       if (mismatch) {
-        console.log("mismatched", details);
         this.doContactFileUpdate(undefined, disambiguatedFilepath, details);
       }
     }
@@ -304,7 +302,7 @@ export default class ContactsSyncPlugin extends Plugin {
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: "sync-icloud-contacts",
-      name: "Sync iCloud Contacts",
+      name: "Sync All Contacts",
       callback: () => {
         this.doSync();
       },
@@ -312,11 +310,6 @@ export default class ContactsSyncPlugin extends Plugin {
 
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new ContactsSyncSettingsTab(this.app, this));
-
-    // When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-    this.registerInterval(
-      window.setInterval(() => console.log("setInterval"), 5 * 60 * 1000)
-    );
   }
 
   onunload() {}

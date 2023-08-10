@@ -36,6 +36,8 @@ At this time, the plugin is only installable via [BRAT](https://tfthacker.com/BR
 - Optionally, customize the "People path", to put your contact notes in a different folder.
 - Optionally, enable syncing of contacts without names. This is usually companies/organizations.
 
+Then use the button in the sidebar or the `iCloud Contacts Sync: Sync All Contacts` command to run the sync.
+
 ## Future Work
 
 - Support syncing back to iCloud
