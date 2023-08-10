@@ -1,89 +1,358 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import {
+	App,
+	Editor,
+	MarkdownView,
+	Modal,
+	Notice,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	request,
+	normalizePath,
+	TFile,
+	parseFrontMatterEntry,
+	TFolder,
+} from "obsidian";
+
+import vCard from "vcf";
 
 // Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-	mySetting: string;
+interface ContactsSyncPluginSettings {
+	icloudUserName: string;
+	icloudPassword: string;
+	peoplePath: string;
+	includeContactsWithoutNames: boolean;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: Partial<ContactsSyncPluginSettings> = {
+	peoplePath: "people",
+	includeContactsWithoutNames: false,
+};
+
+async function getPrincipal(authHeaders: { Authorization: string }) {
+	const res = await request({
+		url: "https://contacts.icloud.com/home",
+		method: "PROPFIND",
+		headers: authHeaders,
+		contentType: "text/xml",
+	});
+	const parser = new DOMParser().parseFromString(res, "text/xml");
+	const principal = parser.querySelector(
+		"current-user-principal > href"
+	)?.textContent;
+	if (!principal) {
+		throw new Notice("Error retrieving current-user-principal");
+	}
+	return principal;
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+async function getAddressBook(
+	principal: string,
+	authHeaders: { Authorization: string }
+) {
+	const res = await request({
+		url: `https://contacts.icloud.com${principal}`,
+		method: "PROPFIND",
+		headers: authHeaders,
+		contentType: "text/xml",
+		body: `<d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+	<d:prop>
+		<card:addressbook-home-set />4
+	</d:prop>
+</d:propfind>
+		`,
+	});
+	const parser = new DOMParser().parseFromString(res, "text/xml");
+	const addressBookHome = parser.querySelector(
+		"addressbook-home-set > href"
+	)?.textContent;
+	if (!addressBookHome) {
+		throw new Notice("Error retrieving addressbook-home-set");
+	}
+	return addressBookHome;
+}
+
+function getValue(card: vCard, key: string) {
+	// return card.toJCard()[1].find("where")
+}
+
+async function getContacts(
+	addressBook: string,
+	authHeaders: { Authorization: string }
+) {
+	console.log(addressBook);
+	const res = await request({
+		url: addressBook,
+		method: "REPORT",
+		headers: authHeaders,
+		contentType: "text/xml",
+		body: `<card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+	<d:prop>
+			<d:getetag />
+			<card:address-data />
+	</d:prop>
+</card:addressbook-query>`,
+	});
+	const parser = new DOMParser().parseFromString(res, "text/xml");
+	const contacts = parser.querySelectorAll("address-data");
+	if (!contacts) {
+		throw new Notice("Error retrieving contacts");
+	}
+	return Array.from(contacts).map((e) => new vCard().parse(e.innerHTML));
+}
+
+function arrayify<T>(arg: T | T[] | undefined): T[] {
+	return arg === undefined ? [] : Array.isArray(arg) ? arg : [arg];
+}
+
+function hasName(card: vCard) {
+	const p = card.get("n");
+	const first = arrayify(p)[0].toJSON()[3];
+	return arrayify(first).some((v) => v.length);
+}
+
+// https://www.bramadams.dev/202303061543/
+function removeFrontmatterFromMessage(message: string) {
+	try {
+		const YAMLFrontMatter = /---\s*[\s\S]*?\s*---/g;
+		const newMessage = message.replace(YAMLFrontMatter, "");
+		return newMessage;
+	} catch (err) {
+		throw new Error("Error removing YML from message" + err);
+	}
+}
+
+function htmlDecode(input: string) {
+	var doc = new DOMParser().parseFromString(input, "text/html");
+	return doc.documentElement.textContent ?? undefined;
+}
+
+function formatPhoneNumber(phoneNumberString: string) {
+	var cleaned = ("" + phoneNumberString).replace(/\D/g, "");
+	var match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
+	if (match) {
+		var intlCode = match[1] ? "+1 " : "";
+		return [intlCode, "(", match[2], ") ", match[3], "-", match[4]].join(
+			""
+		);
+	}
+	return phoneNumberString;
+}
+
+type ParsedContactDetails = {
+	uid: string;
+	name?: string;
+	org?: string;
+	birthday?: string;
+	address?: string[];
+	note?: string;
+	phoneNumbers?: string[];
+	emails?: string[];
+};
+
+function formatYAMLArray(arr: string[]) {
+	return arr.length > 1 ? arr.map((t) => `\n - ${t}`).join("") : arr[0];
+}
+
+function arrayToFrontmatterValue(arr?: string[]) {
+	return arr === undefined || arr.length == 0
+		? undefined
+		: arr.length == 1
+		? arr[0]
+		: arr;
+}
+
+export default class ContactsSyncPlugin extends Plugin {
+	settings: ContactsSyncPluginSettings;
+
+	async doContactFileUpdate(
+		file: TFile | undefined,
+		path: string,
+		details: ParsedContactDetails
+	) {
+		const lines = [
+			details.name && `Name: ${details.name}`,
+			details.org && `Organization: ${details.org}`,
+			details.address && `Address: ${formatYAMLArray(details.address)}`,
+			details.birthday && `Birthday: ${details.birthday}`,
+			details.emails &&
+				details.emails.length &&
+				`Email: ${formatYAMLArray(details.emails)}`,
+			details.phoneNumbers &&
+				details.phoneNumbers.length &&
+				`Phone: ${formatYAMLArray(details.phoneNumbers)}`,
+			details.uid && `SyncID: ${details.uid}`,
+			details.note && `Note: ${details.note}`,
+		].filter(Boolean);
+
+		let mismatch = false;
+		if (!file) {
+			await this.app.vault.create(
+				path,
+				`---\n${lines.join("\n")}\n---\n\n`
+			);
+		} else {
+			this.app.fileManager.processFrontMatter(file, (md) => {
+				if (md.SyncID != details.uid) {
+					mismatch = true;
+					return md;
+				}
+				md.Name = details.name;
+				md.Address = arrayToFrontmatterValue(details.address);
+				md.Note = details.note;
+				md.Organization = details.org;
+				md.Birthday = details.birthday;
+				md.Email = arrayToFrontmatterValue(details.emails);
+				md.Phone = arrayToFrontmatterValue(details.phoneNumbers);
+				return md;
+			});
+		}
+		return { mismatch };
+	}
+
+	async updateContact(contact: vCard) {
+		const uid = contact.get("uid")?.valueOf().toString();
+		const name = htmlDecode(contact.get("fn")?.valueOf().toString());
+		const org = contact.get("org")?.valueOf().toString().replace(";", "");
+		const birthday = contact.get("bday")?.valueOf().toString();
+		const note = contact.get("note")?.valueOf().toString();
+		const address = arrayify(contact.get("adr")).map((a) =>
+			arrayify(a.toJSON()[3])
+				.filter((s) => s.length)
+				.join(", ")
+				.replace("\\n", " ")
+		);
+		const phoneNumbers = arrayify(contact.get("tel")).map((p) => {
+			const prop = p as any;
+			return Array.isArray(prop.type)
+				? `${formatPhoneNumber(prop._data)} (${prop.type[0]})`
+				: formatPhoneNumber(prop._data);
+		});
+
+		const emails = arrayify(contact.get("email")).map((p) => {
+			const prop = p as any;
+			return Array.isArray(prop.type)
+				? `${prop._data} (${prop.type[1]})`
+				: prop._data;
+		});
+
+		const filepath = normalizePath(
+			`${this.settings.peoplePath}/${name}.md`
+		);
+		const disambiguatedFilepath = normalizePath(
+			`${this.settings.peoplePath}/${name} (${
+				uid.toString().split("-")[0]
+			}).md`
+		);
+
+		const file = this.app.vault.getAbstractFileByPath(filepath);
+		const disambiguatedFile = this.app.vault.getAbstractFileByPath(
+			disambiguatedFilepath
+		);
+
+		const details: ParsedContactDetails = {
+			uid,
+			name,
+			org,
+			address,
+			birthday,
+			note,
+			emails,
+			phoneNumbers,
+		};
+
+		if (disambiguatedFile && !file && disambiguatedFile instanceof TFile) {
+			this.app.fileManager.renameFile(disambiguatedFile, filepath);
+			const file = this.app.vault.getAbstractFileByPath(filepath);
+			this.doContactFileUpdate(file as TFile, filepath, details);
+		} else if (disambiguatedFile instanceof TFile) {
+			this.doContactFileUpdate(
+				disambiguatedFile,
+				disambiguatedFilepath,
+				details
+			);
+		} else if (file instanceof TFolder) {
+			this.doContactFileUpdate(undefined, disambiguatedFilepath, details);
+		} else if (!file || file instanceof TFile) {
+			const { mismatch } = await this.doContactFileUpdate(
+				file ?? undefined,
+				filepath,
+				details
+			);
+			if (mismatch) {
+				this.doContactFileUpdate(
+					undefined,
+					disambiguatedFilepath,
+					details
+				);
+			}
+		}
+	}
+
+	async doSync() {
+		new Notice("Starting iCloud contacts sync");
+
+		const authHeaders = {
+			Authorization:
+				"Basic " +
+				btoa(
+					`${this.settings.icloudUserName.trim()}:${this.settings.icloudPassword.trim()}`
+				),
+		};
+
+		const principal = await getPrincipal(authHeaders);
+		const addressBookHome = await getAddressBook(principal, authHeaders);
+		const contacts = await getContacts(
+			`${addressBookHome}card/`,
+			authHeaders
+		);
+		const filteredContacts = this.settings.includeContactsWithoutNames
+			? contacts
+			: contacts.filter(hasName);
+		filteredContacts.forEach((c) => this.updateContact(c));
+	}
 
 	async onload() {
 		await this.loadSettings();
 
 		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
+		const ribbonIconEl = this.addRibbonIcon(
+			"contact",
+			"Sync iCloud Contacts",
+			(evt: MouseEvent) => {
+				this.doSync();
+			}
+		);
 		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
-
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+		ribbonIconEl.addClass("my-plugin-ribbon-class");
 
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
+			id: "sync-icloud-contacts",
+			name: "Sync iCloud Contacts",
 			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
+				this.doSync();
+			},
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+		this.addSettingTab(new ContactsSyncSettingsTab(this.app, this));
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		this.registerInterval(
+			window.setInterval(() => console.log("setInterval"), 5 * 60 * 1000)
+		);
 	}
 
-	onunload() {
-
-	}
+	onunload() {}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			await this.loadData()
+		);
 	}
 
 	async saveSettings() {
@@ -91,44 +360,64 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+class ContactsSyncSettingsTab extends PluginSettingTab {
+	plugin: ContactsSyncPlugin;
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: ContactsSyncPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+		new Setting(containerEl).setName("iCloud Username").addText((text) =>
+			text
+				.setPlaceholder("Enter your username")
+				.setValue(this.plugin.settings.icloudUserName)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.icloudUserName = value;
 					await this.plugin.saveSettings();
-				}));
+				})
+		);
+
+		new Setting(containerEl)
+			.setName("iCloud Password")
+			.setDesc("Generate an app-specific password at appleid.apple.com")
+			.addText((text) => {
+				text.setPlaceholder("Enter your password")
+					.setValue(this.plugin.settings.icloudPassword)
+					.onChange(async (value) => {
+						this.plugin.settings.icloudPassword = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.type = "password";
+			});
+
+		new Setting(containerEl)
+			.setName("People path")
+			.setDesc("Where do you want to save your contacts in Obsidian?")
+			.addText((text) => {
+				text.setPlaceholder("/people")
+					.setValue(this.plugin.settings.peoplePath)
+					.onChange(async (value) => {
+						this.plugin.settings.peoplePath = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Include contacts without names")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.includeContactsWithoutNames)
+					.onChange(async (value) => {
+						this.plugin.settings.includeContactsWithoutNames =
+							value;
+						await this.plugin.saveSettings();
+					});
+			});
 	}
 }
