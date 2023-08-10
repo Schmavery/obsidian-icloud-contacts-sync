@@ -1,34 +1,36 @@
 {
-    "name": "obsidian-icloud-contacts-sync",
-    "version": "1.0.0",
-    "description": "This is a plugin that syncs your contacts to Obsidian from iCloud.",
-    "main": "main.js",
-    "scripts": {
-        "dev": "node esbuild.config.mjs",
-        "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-        "lint": "eslint main.ts",
-        "version": "node version-bump.mjs && git add manifest.json versions.json"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "MIT",
-    "prettier": {
-        "useTabs": false,
-        "tabWidth": 2
-    },
-    "devDependencies": {
-        "@types/node": "^16.11.6",
-        "@types/vcf": "^2.0.3",
-        "@typescript-eslint/eslint-plugin": "5.29.0",
-        "@typescript-eslint/parser": "5.29.0",
-        "builtin-modules": "3.3.0",
-        "esbuild": "0.17.3",
-        "eslint": "^8.46.0",
-        "obsidian": "latest",
-        "tslib": "2.4.0",
-        "typescript": "4.7.4"
-    },
-    "dependencies": {
-        "vcf": "^2.1.1"
-    }
+  "name": "obsidian-icloud-contacts-sync",
+  "version": "1.0.0",
+  "description": "This is a plugin that syncs your contacts to Obsidian from iCloud.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint main.ts",
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "postversion": "cross-var git tag -a $npm_package_version -m $npm_package_version && cross-var git push origin $npm_package_version"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "prettier": {
+    "useTabs": false,
+    "tabWidth": 2
+  },
+  "devDependencies": {
+    "@appicanis/cross-var": "^1.1.1",
+    "@types/node": "^16.11.6",
+    "@types/vcf": "^2.0.3",
+    "@typescript-eslint/eslint-plugin": "5.29.0",
+    "@typescript-eslint/parser": "5.29.0",
+    "builtin-modules": "3.3.0",
+    "esbuild": "0.17.3",
+    "eslint": "^8.46.0",
+    "obsidian": "latest",
+    "tslib": "2.4.0",
+    "typescript": "4.7.4"
+  },
+  "dependencies": {
+    "vcf": "^2.1.1"
+  }
 }
