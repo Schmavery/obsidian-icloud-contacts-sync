@@ -1,5 +1,7 @@
 # Obsidian iCloud Contacts Sync plugin
 
+> 🚀 **Read about how this was implemented**: [MAKING_OF.md](./MAKING_OF.md)
+
 This plugin connects to your iCloud account via CardDAV and creates a note for each of your contacts. The plugin only edits frontmatter
 and will not touch any details you add to the notes on subsequent syncs, including unsynced frontmatter fields.
 
@@ -14,9 +16,6 @@ The plugin will sync the following fields (frontmatter key name in parentheses):
 - Note
 - SyncID <- This represents the contact in iCloud and is used by the sync
 
-## Features
-
-- Sync the following fields to frontmatter
 
 ## Installation
 
