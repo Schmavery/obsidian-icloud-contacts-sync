@@ -1,7 +1,7 @@
 
 # Intro
 
-Recently I've been getting into using [Obsidian](https://obsidian.md/) to record and organize things in my life. It's a pretty great set of features, with an open-source codebase, flat file storage format and very extensible. I have a folder called "people" where I store notes about people in my life, to help me remember simple things like birthdays, where people work etc. At some point, I realized that there was a decent a
+Recently I've been getting into using [Obsidian](https://obsidian.md/) to record and organize things in my life. It's a pretty great set of features, flat file storage format and very extensible. I have a folder called "people" where I store notes about people in my life, to help me remember simple things like birthdays, where people work etc. At some point, I realized that there was a decent a
 mount of duplicated information between Obsidian and my iPhone contacts and started looking for plugins to help unify them. Surprisingly, I didn't find any.
 
 > Ideally, I'd like to populate relevant frontmatter (Obsidian metadata in the YAML format) into a note for each person in my contacts, creating a note if the person doesn't already have one. Existing note content and unrelated frontmatter tags should be preserved.
